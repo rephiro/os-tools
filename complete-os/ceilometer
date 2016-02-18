@@ -1,0 +1,6 @@
+_ceilometer () 
+{ 
+	[ -z "${_ceilometer_comp_list}" ] && _ceilometer_comp_list="$(ceilometer bash-completion)"
+	COMPREPLY=( $(compgen -W "${_ceilometer_comp_list}" "\\$2") )
+}
+complete -F _ceilometer ceilometer

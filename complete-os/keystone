@@ -1,0 +1,6 @@
+_keystone () 
+{ 
+	[ -z "${_keystone_comp_list}" ] && _keystone_comp_list="$(keystone bash-completion 2> /dev/null)"
+	COMPREPLY=( $(compgen -W "${_keystone_comp_list}" "\\$2") )
+}
+complete -F _keystone keystone

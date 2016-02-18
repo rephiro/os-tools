@@ -1,0 +1,6 @@
+_magnum () 
+{ 
+	[ -z "${_magnum_comp_list}" ] && _magnum_comp_list="$(magnum bash-completion)"
+	COMPREPLY=( $(compgen -W "${_magnum_comp_list}" "\\$2") )
+}
+complete -F _magnum magnum

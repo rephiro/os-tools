@@ -1,0 +1,6 @@
+_murano () 
+{ 
+	[ -z "${_murano_comp_list}" ] && _murano_comp_list="$(murano bash-completion)"
+	COMPREPLY=( $(compgen -W "${_murano_comp_list}" "\\$2") )
+}
+complete -F _murano murano

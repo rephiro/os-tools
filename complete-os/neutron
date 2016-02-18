@@ -1,0 +1,6 @@
+_neutron () 
+{ 
+	[ -z "${_neutron_comp_list}" ] && _neutron_comp_list="$(neutron bash-completion)"
+	COMPREPLY=( $(compgen -W "${_neutron_comp_list}" "\\$2") )
+}
+complete -F _neutron neutron

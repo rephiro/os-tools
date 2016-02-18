@@ -1,0 +1,6 @@
+_cinder () 
+{ 
+	[ -z "${_cinder_comp_list}" ] && _cinder_comp_list="$(cinder bash-completion)"
+	COMPREPLY=( $(compgen -W "${_cinder_comp_list}" "\\$2") )
+}
+complete -F _cinder cinder

@@ -1,0 +1,6 @@
+_heat () 
+{ 
+	[ -z "${_heat_comp_list}" ] && _heat_comp_list="$(heat bash-completion)"
+	COMPREPLY=( $(compgen -W "${_heat_comp_list}" "\\$2") )
+}
+complete -F _heat heat

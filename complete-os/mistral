@@ -1,0 +1,6 @@
+_mistral () 
+{ 
+	[ -z "${_mistral_comp_list}" ] && _mistral_comp_list="$(mistral bash-completion)"
+	COMPREPLY=( $(compgen -W "${_mistral_comp_list}" "\\$2") )
+}
+complete -F _mistral mistral

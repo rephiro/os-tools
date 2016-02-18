@@ -1,0 +1,11 @@
+image-create
+image-delete
+image-download
+image-list
+image-show
+image-update
+member-create
+member-delete
+member-list
+bash-completion
+help

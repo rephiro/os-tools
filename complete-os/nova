@@ -1,0 +1,6 @@
+_nova () 
+{ 
+	[ -z "${_nova_comp_list}" ] && _nova_comp_list="$(nova bash-completion)"
+	COMPREPLY=( $(compgen -W "${_nova_comp_list}" "\\$2") )
+}
+complete -F _nova nova

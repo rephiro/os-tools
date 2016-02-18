@@ -1,0 +1,6 @@
+_glance () 
+{ 
+	[ -z "${_glance_comp_list}" ] && _glance_comp_list="$(glance bash-completion)"
+	COMPREPLY=( $(compgen -W "${_glance_comp_list}" "\\$2") )
+}
+complete -F _glance glance

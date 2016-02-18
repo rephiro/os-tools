@@ -1,0 +1,427 @@
+os_functions_tmpfile="/tmp/_os-functions-tmpfile"
+shopt -s expand_aliases
+alias os-auth-curl='curl -s -L -H "Content-type: application/json"'
+alias os-curl='os-auth-curl -H "X-Auth-Token: $ROOT_TOKEN"'
+alias urls='env | grep "^URL_[a-z_0-9]*"'
+
+alias jq > /dev/null 2>&1 && jq="jq" || {
+	jq="`which jq`"
+	[ -z "$jq" ] && jq=$1
+	[ -z "$jq" ] && {
+		echo "Usage: . $0 [<jq command binary>]" >&2
+		return 1
+	}
+	[[ ! -f "$jq" || ! -x "$jq" ]] && {
+		echo "\"$jq\" is not jq." >&2
+		return 1
+	}
+}
+
+ostool_usage() {
+        echo "to exec this, please execute \"baseinfoget\" after reading \"keystonerc_xxxx\"." >&2
+	return 1
+}
+
+init_check() {
+	[ -f /usr/local/sbin/jq ] || { echo "no /usr/local/sbin/jq exist." >&2 ; return 1; }
+	[ -z ${OS_USERNAME} ] && { ostool_usage; return 1; }
+	[ -z ${OS_TENANT_NAME} ] && { ostool_usage; return 1; }
+	[ -z ${OS_PASSWORD} ] && { ostool_usage; return 1; }
+	[ -z ${OS_AUTH_URL} ] && { ostool_usage; return 1; }
+	[ -z ${ROOT_TOKEN} ] && { ostool_usage; return 1; }
+	[ -z ${ROOT_TENANT} ] && { ostool_usage; return 1; }
+	urls > /dev/null || { ostool_usage; return 1; }
+}
+
+clear_env() {
+	unset OS_USERNAME
+	unset OS_TENANT_NAME
+	unset OS_PASSWORD
+	unset KEYSTONE_ADMIN_TOKEN
+	unset OS_AUTH_URL
+	unset OS_REGION_NAME
+	unset OS_DOMAIN_NAME
+
+	unset ROOT_TOKEN
+	unset ROOT_TENANT
+
+	while read line; do
+		unset $line
+	done < <(urls | sed "s/=.*//g")
+
+	PS1="\\s-\\v\\\$ "
+	. ~/.bashrc
+}
+
+## port list get
+get_portlist() {
+	[ -z "$1" ] && url=$URL_neutron || url=$1
+	_tmp=`os-curl -X GET $URL_neutron/v2.0/ports 2> /dev/null`
+	echo $_tmp | jq -r .ports[].id | while read _id; do
+		_tmp2=`echo $_tmp | jq -r ".ports[] | select(.id==\"${_id}\")"`
+		ip_address=`echo $_tmp2 | jq -r .fixed_ips[].ip_address`
+		mac_address=`echo $_tmp2 | jq -r .mac_address`
+		status=`echo $_tmp2 | jq -r .status`
+		echo "${_id},${ip_address},${mac_address},${status}"
+	done
+}
+
+### floatingip delete
+delete_floatingip() {
+	fid=$1
+	[ -z "$2" ] && url=$URL_neutron || url=$2
+	os-curl -X DELETE $url/v2.0/floatingips/${fid}
+}
+
+### floatingip deassociate
+deassociate_floatingip() {
+	fid=$1
+	[ -z "$2" ] && url=$URL_neutron || url=$2
+	json="
+	{
+		\"floatingip\": {
+			\"port_id\":null
+		}
+	}"
+	_tmp=`os-curl -X PUT -d "$json" $url/v2.0/floatingips/${fid} 2> /dev/null`
+	ret_port_id=`echo $_tmp | jq -r .floatingip.port_id`
+	[ ! "$ret_port_id" = "null" ] && return 1
+	return 0
+}
+
+### floatingip associate
+associate_floatingip() {
+	fid=$1
+	port_id=$2
+	[ -z "$3" ] && url=$URL_neutron || url=$3
+	json="
+	{
+		\"floatingip\": {
+			\"port_id\":\"${port_id}\"
+		}
+	}"
+	_tmp=`os-curl -X PUT -d "$json" $url/v2.0/floatingips/${fid} 2> /dev/null`
+	ret_port_id=`echo $_tmp | jq -r .floatingip.port_id`
+	[ ! "$ret_port_id" = "$port_id" ] && return 1
+	return 0
+}
+
+### floatingip create
+create_floatingip() {
+	net_name=$1
+	[ -z "$2" ] && url=$URL_neutron || url=$2
+	net_id=`get_networklist $url | awk -F, "\\$2==\"${net_name}\"{print \\$1}"`
+	json="
+	{
+		\"floatingip\": {
+			\"floating_network_id\":\"${net_id}\"
+		}
+	}"
+	_tmp=`os-curl -X POST -d "$json" $url/v2.0/floatingips 2> /dev/null`
+	id=`echo $_tmp | jq -r .floatingip.id`
+	ip=`echo $_tmp | jq -r .floatingip.floating_ip_address`
+	echo "${id},${ip}"
+}
+
+### vip list get
+get_viplist() {
+	[ -z "$1" ] && url=$URL_neutron || url=$1
+	_tmp=`os-curl -X GET $url/v2.0/lb/vips 2> /dev/null`
+	echo $_tmp | jq -r .vips[].id | while read _id; do
+		_tmp2=`echo $_tmp | jq -r ".vips[] | select(.id==\"${_id}\")"`
+		name=`echo $_tmp2 | jq -r .name`
+		address=`echo $_tmp2 | jq -r .address`
+		protocol=`echo $_tmp2 | jq -r .protocol`
+		port_num=`echo $_tmp2 | jq -r .protocol_port`
+		subnet_id=`echo $_tmp2 | jq -r .subnet_id`
+		port_id=`echo $_tmp2 | jq -r .port_id`
+		echo "${_id},${port_id},${protocol},${address},${port_num},${name}"
+	done
+}
+
+### sub network list get
+get_subnetlist() {
+	[ -z "$1" ] && url=$URL_neutron || url=$1
+	_tmp=`os-curl -X GET $url/v2.0/subnets 2> /dev/null`
+	echo $_tmp | jq -r .subnets[].id | while read _id; do
+		_tmp2=`echo $_tmp | jq -r ".subnets[] | select(.id==\"${_id}\")"`
+		name=`echo $_tmp2 | jq -r .name`
+		cidr=`echo $_tmp2 | jq -r .cidr`
+		echo "${_id},${name},${cidr}"
+	done
+}
+
+### network list get
+get_networklist() {
+	[ -z "$1" ] && url=$URL_neutron || url=$1
+	_tmp=`os-curl -X GET $url/v2.0/networks 2> /dev/null`
+	echo $_tmp | jq -r .networks[].id | while read _id; do
+		_tmp2=`echo $_tmp | jq -r ".networks[] | select(.id==\"${_id}\")"`
+		name=`echo $_tmp2 | jq -r .name`
+		subnet_list=`echo $_tmp2 | jq -r .subnets[]`
+		echo "${_id},${name}"
+	done
+}
+
+### floatingip id get
+get_floatingip_id() {
+	floatingip=$1
+	[ -z "$2" ] && url=$URL_neutron || url=$2
+	_tmp=`os-curl -X GET $url/v2.0/floatingips 2> /dev/null`
+	echo $_tmp | jq -r ".floatingips[] \
+		| select(.floating_ip_address==\"${floatingip}\") \
+		| .id"
+}
+
+### floatingip list get
+get_floatingiplist() {
+	[ -z "$1" ] && url=$URL_neutron || url=$1
+	_tmp=`os-curl -X GET $url/v2.0/floatingips 2> /dev/null`
+	echo $_tmp | jq -r .floatingips[].id | while read _id; do
+		_tmp2=`echo $_tmp | jq -r ".floatingips[] | select(.id==\"${_id}\") "`
+		ip=`echo $_tmp2 | jq -r .floating_ip_address`
+		fixip=`echo $_tmp2 | jq -r .fixed_ip_address`
+		net_id=`echo $_tmp2 | jq -r .floating_network_id`
+		echo "${_id},${ip},${fixip}"
+	done
+}
+
+### vm's ip addres get
+get_vmip() {
+	vm_name=$1
+	net_name=$2
+	[ -z "$3" ] && url=$URL_nova || url=$3
+
+	vm_id=`get_hostlist $url | awk -F, "\\$3==\"${vm_name}\"{print \\$2}"`
+	os-curl $url/servers/$vm_id > $os_functions_tmpfile 2> /dev/null
+	addresses=`jq -r ".server.addresses.\"${net_name}\"[] \
+		| select(.\"OS-EXT-IPS:type\"==\"fixed\") \
+		| .addr" $os_functions_tmpfile`
+	echo $addresses
+}
+
+### all volume (detached to a vm) detach
+detach_allvolumes() {
+	vm_name=$1
+	[ -z "$2" ] && url=$URL_nova || url=$2
+	get_allvolumes $vm_name | while read volume_id; do
+		vm_id=`get_vmid $vm_name $url`
+		detach_volume $volume_id $vm_id $url
+	done
+}
+
+### volume list get
+get_volumelist() {
+	[ -z "$1" ] && url=$URL_cinder || url=$1
+	_tmp=`os-curl $url/volumes 2> /dev/null`
+	echo $_tmp | jq -r .volumes[].id | while read _id; do
+		_tmp2=`echo $_tmp | jq -r ".volumes[] | select(.id==\"${_id}\")"`
+		name=`echo $_tmp2 | jq -r .display_name`
+		status=`echo $_tmp2 | jq -r .status`
+		echo "${_id},${name},${status}"
+	done
+}
+### all volume (attached to a vm) get
+get_allvolumes() {
+	vm_name=$1
+	[ -z "$2" ] && url=$URL_nova || url=$2
+	vm_id=`get_vmid $vm_name $url`
+	os-curl $url/servers/$vm_id > $os_functions_tmpfile 2> /dev/null
+	jq -r ".server.\"os-extended-volumes:volumes_attached\"[].id" $os_functions_tmpfile
+}
+
+### volume detach
+detach_volume() {
+	volume_id=$1
+	vm_id=$2
+	[ -z "$3" ] && url=$URL_nova || url=$3
+	os-curl -X DELETE $url/servers/$vm_id/os-volume_attachments/$volume_id 2> /dev/null
+}
+
+### volume detach by name
+detach_volume_byname() {
+	volume_name=$1
+	vm_name=$2
+	[ -z "$3" ] && url=$URL_nova || cinder_url=$3
+	[ -z "$4" ] && url=$URL_nova || nova_url=$4
+	volume_id=`get_volumeid $volume_name $cinder_url`
+	vm_id=`get_vmid $vm_name $nova_url`
+	detach_volume $volume_id $vm_id $nova_url
+}
+
+### volume attach
+attach_volume() {
+	volume_id=$1
+	vm_id=$2
+	[ -z "$3" ] && url=$URL_nova || url=$3
+
+	volume_attach="
+	{
+		\"volumeAttachment\":{
+			\"volumeId\":\"$volume_id\"
+		}
+	}
+	"
+	os-curl -X POST -d "$volume_attach" $url/servers/$vm_id/os-volume_attachments 2> /dev/null
+}
+
+### volume attach by name
+attach_volume_byname() {
+	volume_name=$1
+	vm_name=$2
+	[ -z "$3" ] && url=$URL_cinder || cinder_url=$3
+	[ -z "$4" ] && url=$URL_nova || nova_url=$4
+	volume_id=`get_volumeid $volume_name $cinder_url`
+	vm_id=`get_vmid $vm_name $nova_url`
+	attach_volume $volume_id $vm_id $nova_url
+}
+
+### volume id get
+get_volumeid() {
+	volume_name=$1
+	[ -z "$2" ] && url=$URL_cinder || url=$2
+	os-curl $url/volumes > $os_functions_tmpfile 2> /dev/null
+	target_volume=`jq ".volumes[] | select(.display_name==\"${volume_name}\")" $os_functions_tmpfile`
+	volume_id=`echo $target_volume | jq -r .id`
+	echo $volume_id
+}
+
+### vm id get
+get_vmid() {
+	vm_name=$1
+	[ -z "$2" ] && url=$URL_nova || url=$2
+	os-curl $url/servers > $os_functions_tmpfile 2> /dev/null
+	vm_id=`jq -r ".servers[] | select(.name==\"${vm_name}\") | .id" $os_functions_tmpfile`
+	echo $vm_id
+}
+
+### image list get
+get_imagelist() {
+	[ -z "$1" ] && url=$URL_glance || url=$1
+	os-curl -X GET $url/v2/images > $os_functions_tmpfile 2> /dev/null
+	image_num=`jq ".images | length" $os_functions_tmpfile`
+	for((i=0;i<$image_num;i++)); do
+		image_id=`jq -r ".images[$i].id" $os_functions_tmpfile`
+		image_name=`jq -r ".images[$i].name" $os_functions_tmpfile`
+		image_state=`jq -r ".images[$i].status" $os_functions_tmpfile`
+		echo "$image_id,$image_state,$image_name"
+	done
+}
+
+### image download
+download_image() {
+	[ -z "$1" ] && { echo "please input image id." >&2 ; return 1; } || input=$1
+	[ -z "$2" ] && url=$URL_glance || url=$2
+	os-curl -X GET $url/v2/images > $os_functions_tmpfile 2> /dev/null
+	image_id=
+	image_name=
+	image_id_flag=`jq ".images[] | select(.id==\"${input}\") | length" $os_functions_tmpfile`
+	if [ -z "$image_id_flag" ]; then
+		image_name=$input
+		image_id=`jq -r ".images[] | select(.name==\"${input}\") | .id" $os_functions_tmpfile`
+		[ -z "$image_id" ] && { echo "no such a image name." >&2 ; return 1; }
+	else
+		image_name=`jq -r ".images[] | select(.id==\"${input}\") | .name" $os_functions_tmpfile`
+		image_id=$input
+		[ -z "$image_name" ] && { echo "no such a image id." >&2 ; return 1; }
+	fi
+	[ -f ${image_name}.qcow2 ] && { echo "image file \"${image_name}.qcow2\" exist." >&2 ; return 1; }
+	os-curl -X GET $url/v2/images/$image_id/file > ${image_name}.qcow2 2> /dev/null
+}
+
+### hostlist get
+get_hostlist() {
+	[ -z "$1" ] && url=$URL_nova || url=$1
+	os-curl -X GET $url/servers/detail?all_tenants=1 > $os_functions_tmpfile 2> /dev/null
+	server_num=`jq ".servers | length" $os_functions_tmpfile`
+	for((i=0;i<$server_num;i++)); do
+		vm_id=`jq -r ".servers[$i].id" $os_functions_tmpfile`
+		vm_name=`jq -r ".servers[$i].name" $os_functions_tmpfile`
+		vm_state=`jq -r ".servers[$i].status" $os_functions_tmpfile`
+		vm_host=`jq -r ".servers[$i].\"OS-EXT-SRV-ATTR:host\"" $os_functions_tmpfile`
+		echo "$vm_host,$vm_id,$vm_name,$vm_state"
+	done
+}
+
+### token get and ROOT_TOKEN set
+reget_token() {
+	export ROOT_TOKEN
+	token="`get_token`"
+	[ $? = 0 ] || { echo "token get error." >&2; return 1; }
+	[ -z "$token" ] && { echo "got token is blank." >&2; return 1; }
+	ROOT_TOKEN="$token"
+}
+
+### token get
+get_token(){
+	if [[ -z ${OS_USERNAME} || -z ${OS_PASSWORD} || -z ${OS_TENANT_NAME} || -z ${OS_AUTH_URL} ]]; then
+		echo "to get token, OS_USERNAME, OS_PASSWORD, OS_TENANT_NAME and OS_AUTH_URL required." >&2
+		return 1
+	fi
+	[ -z $os_functions_tmpfile ] && return 1
+	auth_admin="
+	{
+		\"auth\":{
+			\"tenantName\":\"$OS_TENANT_NAME\",
+			\"passwordCredentials\":{
+				\"username\":\"$OS_USERNAME\",
+				\"password\":\"$OS_PASSWORD\"
+			}
+		}
+	}
+	"
+	os-auth-curl -X POST -d "$auth_admin" $OS_AUTH_URL/tokens > $os_functions_tmpfile 2> /dev/null
+	jq -r '.access.token.id' $os_functions_tmpfile
+}
+
+### tenant get
+get_tenant() {
+	[ -z $1 ] && TENANT_NAME=$OS_TENANT_NAME || TENANT_NAME=$1
+	if [[ -z ${TENANT_NAME} || -z ${OS_AUTH_URL} || -z ${ROOT_TOKEN} ]]; then
+		echo "to get endpoint, OS_TENANT_NAME (or arg), OS_AUTH_URL and ROOT_TOKEN required." >&2
+		return 1
+	fi
+	[ -z $os_functions_tmpfile ] && return 1
+	os-curl -X GET $OS_AUTH_URL/tenants > $os_functions_tmpfile 2> /dev/null
+	jq -r ".tenants[] | select(.name==\"${TENANT_NAME}\") | .id" $os_functions_tmpfile
+}
+
+### endpoints get
+get_endpoints() {
+	if [[ -z ${ROOT_TENANT} || -z ${ROOT_TOKEN} ]]; then
+		echo "to get endpoint, ROOT_TENANT and ROOT_TOKEN required." >&2
+		return 1
+	fi
+	[ -z $os_functions_tmpfile ] && return 1
+	tenant_json="
+	{
+		\"auth\":{
+			\"token\":{
+				\"id\":\"$ROOT_TOKEN\"
+			},
+			\"tenantId\":\"$ROOT_TENANT\"
+		}
+	}
+	"
+	os-curl -X POST -d "$tenant_json" $OS_AUTH_URL/tokens > $os_functions_tmpfile 2> /dev/null
+	while read line ; do
+		service_name=`echo $line | sed 's/-/_/g'`
+		jq_query=".access.serviceCatalog[] | select(.name==\"${line}\") | .endpoints[].publicURL"
+		echo URL_${service_name}=`jq -r "$jq_query" $os_functions_tmpfile`
+	done < <(jq -r ".access.serviceCatalog[] | .name" $os_functions_tmpfile)
+}
+
+### base infomation get
+baseinfoget() {
+	reget_token || return 1
+	output_token=$ROOT_TOKEN
+	[ ${#output_token} -gt 60 ] && output_token="$(echo $output_token | cut -c -60) ..."
+	echo "ROOT_TOKEN=$output_token"
+
+	export ROOT_TENANT=`get_tenant`
+	echo ROOT_TENANT=$ROOT_TENANT
+
+	export `get_endpoints`
+	urls
+}
+

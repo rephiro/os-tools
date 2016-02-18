@@ -1,0 +1,3 @@
+OS_TOOLS_HOME=/etc/os-tools/
+[ -f $OS_TOOLS_HOME/complete-os-rc ] && source $OS_TOOLS_HOME/complete-os-rc
+[ -f $OS_TOOLS_HOME/os-functions ] && source $OS_TOOLS_HOME/os-functions
