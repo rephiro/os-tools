@@ -1,8 +1,8 @@
 # os-tools
 
   pythonを使用しない、bashのみの独自OpenStackクライアント。
-  os-toolsは`jq`(<https://stedolan.github.io/jq/>)を利用しているため、
-  あらかじめ`jq`をインストールしてから使用してください。
+  os-toolsはjq(<https://stedolan.github.io/jq/>)を利用しているため、
+  あらかじめjqをインストールしてから使用してください。
 
   作業用に作成したツールのため、本ツールのインストール／使用は自己責任でお願いします。
 
