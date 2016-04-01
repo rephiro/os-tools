@@ -1,5 +1,10 @@
 #!/bin/bash
 
+[ ! $(id -u) = 0 ] && {
+	echo "Please run as the root user."
+	exit 0
+}
+
 work=$(dirname $0)
 insdir=/etc/os-tools
 
@@ -15,9 +20,6 @@ which openstack > /dev/null 2>&1 && openstack complete > $insdir/complete-os/ope
 which jq > /dev/null 2>&1 || cp -p $work/jq /usr/local/sbin/ 2> /dev/null
 
 load_command="[ -f $insdir/os-tools ] && . $insdir/os-tools"
-grep_str=$(echo "$load_command" | sed "s/\\[/\\\\[/g" | sed "s/\\]/\\\\]/g")
+echo "$load_command" > /etc/profile.d/os-tools.sh
 
-key_line=$(grep -n "$grep_str" ~/.bashrc | sed 's/:.*//g')
-[ ! -z "$key_line" ] && sed -i "${key_line}d" ~/.bashrc
-echo "$load_command" >> ~/.bashrc
-echo "Please reload .bashrc file."
+echo "Please load /etc/profile.d/os-tools.sh file, or relogin."
