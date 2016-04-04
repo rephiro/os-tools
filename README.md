@@ -16,7 +16,7 @@
     git clone https://github.com/rephiro/os-tools
     cd os-tools
     ./install-os-tools.sh
-    . ~/.bashrc
+    source /etc/profile.d/os-tools.sh
 
 ## 使い方
 
