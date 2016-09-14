@@ -409,8 +409,8 @@ get_endpoints() {
 	while read line ; do
 		service_name=`echo $line | sed 's/-/_/g'`
 		jq_query=".access.serviceCatalog[] | select(.name==\"${line}\") | .endpoints[].publicURL"
-		echo URL_${service_name}=`jq -r "$jq_query" $os_functions_tmpfile`
-	done < <(jq -r ".access.serviceCatalog[] | .name" $os_functions_tmpfile)
+		echo URL_${service_name}=`jq -r "$jq_query" $os_functions_tmpfile | head -1`
+	done < <(jq -r ".access.serviceCatalog[] | .name" $os_functions_tmpfile | sort -u)
 }
 
 ### base infomation get
