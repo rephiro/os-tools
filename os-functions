@@ -339,9 +339,13 @@ get_hostlist() {
 		vm_name=`jq -r ".servers[$i].name" $os_functions_tmpfile`
 		vm_state=`jq -r ".servers[$i].status" $os_functions_tmpfile`
 		vm_host=`jq -r ".servers[$i] | .[\"OS-EXT-SRV-ATTR:host\"]" $os_functions_tmpfile`
-		addr_key=`jq -r ".servers[$i].addresses | keys[0]" $os_functions_tmpfile`
-		vm_addr=`jq -r ".servers[$i].addresses.${addr_key}[0].addr" $os_functions_tmpfile`
-		echo "$vm_host,$vm_id,$vm_state,$vm_name,$vm_addr"
+		vm_addr=""
+		nets=$(jq -r ".servers[$i].addresses|keys" $os_functions_tmpfile | sed -e 's/\[\|\]\|\"\|,//g')
+		for net in $nets; do
+			vm_addr=$vm_addr,$(jq -r ".servers[$i].addresses.${net}[0].addr" $os_functions_tmpfile)
+		done
+
+		echo "$vm_host,$vm_id,$vm_state,$vm_name$vm_addr"
 	done
 }
 
